@@ -2,17 +2,12 @@ import numpy as np
 import os
 import tensorflow as tf
 
-USE_CPU = False
-if USE_CPU:
-    N_WORKERS = 0
-    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-else:
-    N_WORKERS = 8
-from tensorflow_addons.layers import WeightNormalization
+# from tensorflow_addons.layers import WeightNormalization
+from pixelsnail_keras.wn import WeightNormalization
 from tensorflow.keras.layers import Layer, ZeroPadding2D, Conv2D, Dropout, Dense, Input, Concatenate, Reshape, \
     Cropping2D, Activation
 
-from utils import get_causal_mask
+from pixelsnail_keras.utils import get_causal_mask
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -136,9 +131,156 @@ class NetworkInNetwork(Layer):
         return config
 
 
+class CausalAttentionLayer(Layer):
+    """
+    Basic causal convolution layer; implementing causality and weight normalization.
+
+    """
+
+    def __init__(self, **kwargs):
+        super(CausalAttentionLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        super(CausalAttentionLayer, self).build(input_shape)  # Be sure to call this at the end
+
+    def call(self, x):
+        key, query, value = x
+
+        nr_chns = key.shape[-1]
+        mixin_chns = value.shape[-1]
+
+        canvas_size = int(np.prod(key.shape[1:-1]))
+        canvas_size_q = int(np.prod(query.shape[1:-1]))
+        causal_mask = get_causal_mask(canvas_size_q, 1)
+
+        q_m = Reshape((canvas_size_q, nr_chns))(tf.debugging.check_numerics(query, "badQ"))
+        k_m = Reshape((canvas_size, nr_chns))(tf.debugging.check_numerics(key, "badK"))
+        v_m = Reshape((canvas_size, mixin_chns))(tf.debugging.check_numerics(value, "badV"))
+
+        dot = tf.matmul(q_m, k_m, transpose_b=True)
+        causal_probs = tf.nn.softmax(dot, axis=-1) * causal_mask
+        mixed = tf.matmul(causal_probs, v_m)
+
+        # mixed = tf.keras.layers.Attention(causal=True)([q_m, v_m, k_m])
+        out = Reshape(query.shape[1:-1] + [mixin_chns])(mixed)
+        out = tf.debugging.check_numerics(out, "bad mixed")
+
+        # out = NetworkInNetwork(filters=mixin_chns)(value)  ### REMOVE
+        # out = tf.debugging.check_numerics(out, "bad")
+
+        return out
+
+    def compute_output_shape(self, input_shape):
+        return self.conv.compute_output_shape(input_shape)
+
+    def get_config(self):
+        config = super(CausalAttentionLayer, self).get_config()
+        return config
+
+
+class GatedResidualBlockLayer(Layer):
+    """
+
+    """
+
+    def __init__(self,
+                 nonlinearity=None,
+                 dropout=0.0,
+                 conv1=None,
+                 conv2=None, **kwargs):
+        super(GatedResidualBlockLayer, self).__init__(**kwargs)
+
+        self.conv1 = conv1
+        self.conv2 = conv2
+        self.dropout = dropout
+        self.nolin = nonlinearity
+        self.activation = Activation(self.nolin)
+
+    def build(self, input_shape):
+        super(GatedResidualBlockLayer, self).build(input_shape)  # Be sure to call this at the end
+
+    def call(self, inputs):
+
+        x, aux = inputs
+        filters = x.shape[-1]
+
+        # should this not have activation??
+        c1 = self.conv1(self.activation(x))
+
+        if aux is not None:
+            # add short-cut connection if auxiliary input 'a' is given
+            # using NIN (network-in-network)
+            c1 += NetworkInNetwork(filters, activation=None, name=self.name + "_nin")(self.activation(aux))
+
+        # c1 is passed through a non-linearity step here; not sure if it is needed??
+        c1 = self.activation(c1)
+
+        if self.dropout > 0.0:
+            c1 = Dropout(self.dropout, name=self.name + "_dropout")(c1)
+
+        c2 = self.conv2(c1)
+
+        # Gating ; split into two pieces along teh channels
+        a, b = tf.split(c2, 2, 3)
+        c3 = a * tf.nn.sigmoid(b)
+
+        # skip connection to input
+        x_out = x + c3
+
+        return x_out
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+    def get_config(self):
+        config = super(GatedResidualBlockLayer, self).get_config()
+        return config
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Blocks
 # ----------------------------------------------------------------------------------------------------------------------
+
+def SimpleCausalAttentionBlock(key, query, value):
+    """
+    A causal attention block as described in ..., following the "key", "query", "value" structure
+
+    Parameters
+    ----------
+
+        key, query, value : Tensor (B, H, W, C)
+
+    Returns
+    -------
+
+        Tensor (B, H, W, C)
+
+    """
+    bs, nr_chns = key.shape[0], key.shape[-1]
+
+    mixin_chns = value.shape[-1]
+    #
+    canvas_size = int(np.prod(key.shape[1:-1]))
+    canvas_size_q = int(np.prod(query.shape[1:-1]))
+    causal_mask = get_causal_mask(canvas_size_q, 1)
+
+    q_m = Reshape((canvas_size_q, nr_chns))(tf.debugging.check_numerics(query, "badQ"))
+    k_m = Reshape((canvas_size, nr_chns))(tf.debugging.check_numerics(key, "badK"))
+    v_m = Reshape((canvas_size, mixin_chns))(tf.debugging.check_numerics(value, "badV"))
+
+    dot = tf.matmul(q_m, k_m, transpose_b=True)
+    causal_probs = tf.nn.softmax(dot, axis=-1) * causal_mask
+    mixed = tf.matmul(causal_probs, v_m)
+
+    # mixed = tf.keras.layers.Attention(causal=True)([q_m, v_m, k_m])
+    out = Reshape(query.shape[1:-1] + [mixin_chns])(mixed)
+    out = tf.debugging.check_numerics(out, "bad mixed")
+
+    # out = NetworkInNetwork(filters=mixin_chns)(value)  ### REMOVE
+    # out = tf.debugging.check_numerics(out, "bad")
+
+    return out
+
 
 def CausalAttentionBlock(key, query, value):
     """
@@ -163,11 +305,12 @@ def CausalAttentionBlock(key, query, value):
     canvas_size_q = int(np.prod(query.shape[1:-1]))
     causal_mask = get_causal_mask(canvas_size_q, 1)
 
-    q_m = Reshape((canvas_size_q, nr_chns))(query)
-    k_m = Reshape((canvas_size, nr_chns))(key)
-    v_m = Reshape((canvas_size, mixin_chns))(value)
+    q_m = Reshape((canvas_size_q, nr_chns))(tf.debugging.check_numerics(query, "badQ"))
+    k_m = Reshape((canvas_size, nr_chns))(tf.debugging.check_numerics(key, "badK"))
+    v_m = Reshape((canvas_size, mixin_chns))(tf.debugging.check_numerics(value, "badV"))
 
-    dot = tf.matmul(q_m, k_m, transpose_b=True) - (1. - causal_mask) * 1e10
+    dot = tf.matmul(q_m, k_m, transpose_b=True)
+    dot = dot - (1. - causal_mask) * 1e10
     dot = dot - tf.compat.v1.reduce_max(dot, axis=-1, keep_dims=True)
 
     causal_exp_dot = tf.exp(dot / np.sqrt(nr_chns).astype(np.float32)) * causal_mask
@@ -175,7 +318,11 @@ def CausalAttentionBlock(key, query, value):
 
     mixed = tf.matmul(causal_probs, v_m)
 
-    return Reshape(query.shape[1:-1] + [mixin_chns])(mixed)
+    out = Reshape(query.shape[1:-1] + [mixin_chns])(mixed)
+
+    out = tf.debugging.check_numerics(out, "bad")
+
+    return out
 
 
 def GatedResidualBlock(x, aux=None,
@@ -219,7 +366,8 @@ def GatedResidualBlock(x, aux=None,
 # Model
 # ----------------------------------------------------------------------------------------------------------------------
 
-def pixelSNAIL(attention=True, out_channels=None, num_pixel_blocks=1, num_grb_per_pixel_block=1, dropout=0.0, nr_filters=128):
+def pixelSNAIL(attention=True, out_channels=None, num_pixel_blocks=1, num_grb_per_pixel_block=1, dropout=0.0,
+               nr_filters=128):
     nr_logistic_mix = 10
     kernel_size = 3
 
@@ -238,19 +386,21 @@ def pixelSNAIL(attention=True, out_channels=None, num_pixel_blocks=1, num_grb_pe
                                    nonlinearity="elu",
                                    dropout=dropout,
                                    conv1=CausalConv2D(filters=nr_filters, kernel_size=k_d, shift="down",
-                                                      activation="elu"),
+                                                      activation="elu", name="causalconv_u_1_{}_{}".format(i, j)),
                                    conv2=CausalConv2D(filters=2 * nr_filters, kernel_size=k_d, shift="down",
-                                                      activation="elu"))
+                                                      activation="elu", name="causalconv_u_2_{}_{}".format(i, j)))
             ul = GatedResidualBlock(x=ul, aux=u,
                                     nonlinearity="elu",
                                     dropout=dropout,
                                     conv1=CausalConv2D(filters=nr_filters, kernel_size=k_dr, shift="downright",
-                                                       activation="elu"),
+                                                       activation="elu", name="causalconv_ul_1_{}_{}".format(i, j)),
                                     conv2=CausalConv2D(filters=2 * nr_filters, kernel_size=k_dr, shift="downright",
-                                                       activation="elu"))
+                                                       activation="elu", name="causalconv_ul_2_{}_{}".format(i, j)))
 
         if attention:
             content = Concatenate(axis=3)([x_in, ul])
+
+            content = tf.debugging.check_numerics(content, "bad conent")
             channels = content.shape[-1]
             kv = GatedResidualBlock(x=content, aux=None,
                                     nonlinearity="elu",
@@ -265,12 +415,14 @@ def pixelSNAIL(attention=True, out_channels=None, num_pixel_blocks=1, num_grb_pe
                                        dropout=dropout,
                                        conv1=NetworkInNetwork(filters=nr_filters, activation=None),
                                        conv2=NetworkInNetwork(filters=2 * nr_filters, activation=None))
-            query = NetworkInNetwork(filters=nr_filters)(query)
-
-            a = CausalAttentionBlock(key, query, value)
+            query = NetworkInNetwork(filters=nr_filters, activation=None)(query)
+            #
+            a = SimpleCausalAttentionBlock(key, query, value)
+            a = tf.debugging.check_numerics(a, "bad a!!")
+            # a = query
         else:
             a = None
-            #a = GatedResidualBlock(x=ul, aux=None,
+            # a = GatedResidualBlock(x=ul, aux=None,
             #                        nonlinearity="elu",
             #                        dropout=dropout,
             #                        conv1=NetworkInNetwork(filters=nr_filters, activation=None),

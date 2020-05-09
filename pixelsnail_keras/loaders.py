@@ -17,9 +17,9 @@ def load_cifar_data(preprocess, batch_size=32):
         x_test = preprocess(x_test)
 
     datagen = ImageDataGenerator()
-    datagen_train = datagen.flow(x_train.astype(float),x_train.astype(float),
+    datagen_train = datagen.flow(x_train.astype(float), x_train.astype(float),
                                  batch_size=batch_size)
-    datagen_test = datagen.flow(x_test.astype(float),x_test.astype(float),
+    datagen_test = datagen.flow(x_test.astype(float), x_test.astype(float),
                                 batch_size=batch_size)
 
     return datagen_train, datagen_test
@@ -58,9 +58,9 @@ def load_gemstone_data(preprocess, batch_size=32):
     x_test = x_test[:cap * batch_size, ...]
 
     datagen = ImageDataGenerator()
-    datagen_train = datagen.flow(x_train.astype(float),x_train.astype(float),
+    datagen_train = datagen.flow(x_train.astype(float), x_train.astype(float),
                                  batch_size=batch_size)
-    datagen_test = datagen.flow(x_test.astype(float),x_test.astype(float),
+    datagen_test = datagen.flow(x_test.astype(float), x_test.astype(float),
                                 batch_size=batch_size)
 
     return datagen_train, datagen_test
