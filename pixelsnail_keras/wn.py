@@ -13,6 +13,11 @@
 # limitations under the License.
 # =============================================================================
 
+#
+# this is moved to the repo so that the initialization parameter can be changed from bool to int32 to allow
+# TensorBoard to function correctly
+
+
 import logging
 
 import tensorflow as tf
@@ -160,11 +165,11 @@ class WeightNormalization(tf.keras.layers.Wrapper):
         or by the input value if self.data_init is True.
         """
         with tf.control_dependencies(
-            [
-                tf.debugging.assert_equal(  # pylint: disable=bad-continuation
-                    self._initialized, tf.constant([0]), message="The layer has been initialized."
-                )
-            ]
+                [
+                    tf.debugging.assert_equal(  # pylint: disable=bad-continuation
+                        self._initialized, tf.constant([0]), message="The layer has been initialized."
+                    )
+                ]
         ):
             if self.data_init:
                 assign_tensors = self._data_dep_init(inputs)

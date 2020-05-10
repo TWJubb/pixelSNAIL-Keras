@@ -1,6 +1,9 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import datetime
+import dateutil.tz
+import os
 
 
 def sample_from_discretized_mix_logistic(l, nr_mix):
@@ -64,10 +67,6 @@ def sample_from_discretized_mix_logistic(l, nr_mix):
                       tf.reshape(x_b, xs[:-1] + [1])], 3)
 
 
-import datetime
-import dateutil.tz
-import os
-
 class SampleCallback(tf.keras.callbacks.Callback):
 
     def __init__(self, save_every=10):
@@ -77,9 +76,9 @@ class SampleCallback(tf.keras.callbacks.Callback):
         self.save_every = save_every
 
         timestamp = datetime.datetime.now(dateutil.tz.tzlocal()).strftime('%Y_%m_%d_%H_%M_%S')
-        logdir = 'pixelsnail_keras_%s' % (timestamp)
+        logdir = 'pixelsnail_data_%s' % (timestamp)
 
-        self.save_dir = os.path.join("pixelsnail_keras", logdir)
+        self.save_dir = os.path.join(".", logdir)
 
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
@@ -96,7 +95,7 @@ class SampleCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
 
         if epoch % self.save_every == 0 and epoch != 0:
-            samp = sample_from_model( self.model, shape=(32, 32, 3),batch_size=16)
+            samp = sample_from_model(self.model, shape=(32, 32, 3), batch_size=16)
 
             fig, ax = plt.subplots(4, 4, figsize=(10, 10))
             for i in range(4):
@@ -125,6 +124,7 @@ class SampleCallback(tf.keras.callbacks.Callback):
     def on_test_batch_end(self, batch, logs=None):
         self.test_loss += [logs.get('loss')]
 
+
 def sample_from_model(model, shape=(32, 32, 3), batch_size=25):
     """
     Given a Keras model
@@ -151,7 +151,7 @@ def sample_from_model(model, shape=(32, 32, 3), batch_size=25):
     x_gen = np.zeros((batch_size,) + shape, dtype=np.float32)
     print("\n")
     for yi in range(shape[0]):
-        print("Sampling batch of images : {:.1f} %".format(100*yi/ shape[0]), end="\r")
+        print("Sampling batch of images : {:.1f} %".format(100 * yi / shape[0]), end="\r")
         for xi in range(shape[1]):
             new_x_gen = model.predict(x_gen)
             new_x_gen = sample_from_discretized_mix_logistic(new_x_gen, 10)
@@ -221,7 +221,7 @@ def sample_from_model_occluded(image, model, nrows=16, ncols=8):
     occluded = x_reconstructed.copy()
 
     for yi in range(shape[0]):
-        print("Sampling image : {:.1f} %".format(100*yi/ shape[0]), end="\r")
+        print("Sampling image : {:.1f} %".format(100 * yi / shape[0]), end="\r")
         if yi < nrows:
             continue
         for xi in range(shape[1]):
