@@ -2,6 +2,9 @@
 
 Experiments with pixelCNN family of generative models; including a Keras implementation of the original pixelSNAIL code (which was previously TensorFlow 1.0.
 
+`/pixelsnail_tf1` : Refactored version of the original pixelSNAIL code, for a single GPU and working (but difficult to read and debug)
+
+`/pixelsnail_keras` : Ported the original version into Keras; instability in code remains an issue.
 
 ## Installing
 
