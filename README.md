@@ -1,4 +1,4 @@
-# pixelCNN
+# pixelSNAIL
 
 Experiments with pixelCNN family of generative models; including a Keras implementation of the original pixelSNAIL code (which was previously TensorFlow 1.0.
 
