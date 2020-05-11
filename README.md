@@ -4,11 +4,11 @@ Experiments with pixelCNN family of generative models; including a Keras impleme
 
 The code was written alongside a series of tutorials on my blog
 
-https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-1/
-https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-2/
-https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-3/
-https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-4/
-https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-5/
+- https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-1/
+- https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-2/
+- https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-3/
+- https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-4/
+- https://thomasjubb.blog/autoregressive-generative-models-in-depth-part-5/
 
 `/pixelsnail_tf1` : Refactored version of the original pixelSNAIL code, for a single GPU and working (but difficult to read and debug)
 
